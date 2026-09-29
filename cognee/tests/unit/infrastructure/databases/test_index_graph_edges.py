@@ -116,3 +116,54 @@ async def test_index_graph_edges_initialization_error():
         pytest.raises(RuntimeError, match="Graph edge indexing error"),
     ):
         await index_graph_edges()
+
+
+@pytest.fixture
+def skip_relationships(monkeypatch):
+    """Set EDGE_EMBEDDING_SKIP_RELATIONSHIPS for one test and drop the cached config after."""
+    from cognee.modules.cognify.config import get_cognify_config
+
+    def _set(value: str):
+        monkeypatch.setenv("EDGE_EMBEDDING_SKIP_RELATIONSHIPS", value)
+        get_cognify_config.cache_clear()
+
+    yield _set
+    monkeypatch.delenv("EDGE_EMBEDDING_SKIP_RELATIONSHIPS", raising=False)
+    get_cognify_config.cache_clear()
+
+
+def test_create_edge_type_datapoints_skips_configured_relationships(skip_relationships):
+    skip_relationships("belongs_to_set, is_a")
+    edges = [
+        ("doc", "set", "belongs_to_set", {"edge_text": "doc belongs to set notes."}),
+        ("cat", "animal", "is_a", {"edge_text": "cat is a animal."}),
+        ("cat", "mouse", "chases", {"edge_text": "The cat chases the mouse."}),
+        {"relationship_name": "is_a", "edge_text": "dog is a animal."},
+        {"relationship_name": "eats", "edge_text": "The cat eats fish."},
+    ]
+
+    datapoints = create_edge_type_datapoints(edges)
+
+    assert [datapoint.relationship_name for datapoint in datapoints] == [
+        "The cat chases the mouse.",
+        "The cat eats fish.",
+    ]
+
+
+def test_create_edge_type_datapoints_skip_matches_relationship_not_edge_text(skip_relationships):
+    skip_relationships("is_a")
+    edges = [("cat", "mouse", "chases", {"edge_text": "is_a"})]
+
+    datapoints = create_edge_type_datapoints(edges)
+
+    assert [datapoint.relationship_name for datapoint in datapoints] == ["is_a"]
+
+
+def test_create_edge_type_datapoints_embeds_every_edge_by_default(skip_relationships):
+    skip_relationships("")
+    edges = [
+        ("doc", "set", "belongs_to_set", {"edge_text": "doc belongs to set notes."}),
+        ("cat", "animal", "is_a", {"edge_text": "cat is a animal."}),
+    ]
+
+    assert len(create_edge_type_datapoints(edges)) == 2

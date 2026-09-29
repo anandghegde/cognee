@@ -3,6 +3,7 @@ from typing import Any
 
 from cognee.infrastructure.databases.graph import get_graph_engine
 from cognee.infrastructure.databases.graph.graph_db_interface import EdgeData
+from cognee.modules.cognify.config import is_edge_embedding_skipped
 from cognee.modules.graph.models.EdgeType import EdgeType
 from cognee.modules.graph.utils.prepare_edges_for_storage import get_edge_retrieval_text
 from cognee.shared.logging_utils import get_logger
@@ -40,6 +41,8 @@ def create_edge_type_datapoints(edges_data) -> list[EdgeType]:
     """Transform raw edge data into EdgeType datapoints."""
     edge_texts = []
     for edge in edges_data:
+        if is_edge_embedding_skipped(_get_edge_relationship_name(edge, _get_edge_properties(edge))):
+            continue
         edge_text = _get_edge_text(edge)
         if edge_text:
             edge_texts.append(edge_text)

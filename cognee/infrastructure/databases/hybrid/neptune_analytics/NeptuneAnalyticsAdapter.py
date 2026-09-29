@@ -16,6 +16,7 @@ from cognee.infrastructure.databases.vector.models.PayloadSchema import PayloadS
 from cognee.infrastructure.databases.vector.models.ScoredResult import ScoredResult
 from cognee.infrastructure.databases.vector.vector_db_interface import VectorDBInterface
 from cognee.infrastructure.engine import DataPoint
+from cognee.modules.cognify.config import is_edge_embedding_skipped
 from cognee.modules.graph.models.EdgeType import EdgeType
 from cognee.modules.graph.utils.prepare_edges_for_storage import get_edge_retrieval_text
 from cognee.modules.storage.utils import JSONEncoder
@@ -598,6 +599,8 @@ class NeptuneAnalyticsAdapter(NeptuneGraphDB, VectorDBInterface):
         # Collect unique edge texts for embedding.
         edge_texts = []
         for edge in edges:
+            if is_edge_embedding_skipped(edge[2]):
+                continue
             props = edge[3] if len(edge) > 3 and edge[3] else {}
             edge_text = get_edge_retrieval_text(props.get("edge_text"), edge[2])
             if edge_text:

@@ -1,7 +1,9 @@
 import os
 from functools import lru_cache
+from typing import Annotated, Any
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from cognee.exceptions import CogneeConfigurationError
 from cognee.shared.data_models import DefaultContentPrediction, SummarizedContent
@@ -11,6 +13,12 @@ class CognifyConfig(BaseSettings):
     classification_model: object = DefaultContentPrediction
     summarization_model: object = SummarizedContent
     triplet_embedding: bool = False
+    # Relationship names whose edges are written to the graph but get no vector
+    # in EdgeType_relationship_name (env: EDGE_EMBEDDING_SKIP_RELATIONSHIPS,
+    # comma-separated). Every edge carries its own edge_text, so the collection
+    # holds one embedding per edge; structural relationships such as
+    # belongs_to_set or is_a can be most of it. Empty (default) embeds them all.
+    edge_embedding_skip_relationships: Annotated[list[str], NoDecode] = []
     chunks_per_batch: int | None = None
     # Opt-in contradiction detection (issue #3699). Default OFF so the standard
     # cognify pipeline is unchanged. Tunables gate the verdict and the LLM payload.
@@ -35,11 +43,21 @@ class CognifyConfig(BaseSettings):
     gliner_torch_index_url: str = "https://download.pytorch.org/whl/cpu"
     model_config = SettingsConfigDict(env_file=".env", extra="allow")
 
+    @field_validator("edge_embedding_skip_relationships", mode="before")
+    @classmethod
+    def _parse_csv(cls, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [part.strip() for part in value.split(",") if part.strip()]
+        return [str(part).strip() for part in value if str(part).strip()]
+
     def to_dict(self) -> dict:
         return {
             "classification_model": self.classification_model,
             "summarization_model": self.summarization_model,
             "triplet_embedding": self.triplet_embedding,
+            "edge_embedding_skip_relationships": self.edge_embedding_skip_relationships,
             "chunks_per_batch": self.chunks_per_batch,
             "contradiction_detection": self.contradiction_detection,
             "contradiction_confidence_threshold": self.contradiction_confidence_threshold,
@@ -54,6 +72,12 @@ class CognifyConfig(BaseSettings):
 @lru_cache
 def get_cognify_config():
     return CognifyConfig()
+
+
+def is_edge_embedding_skipped(relationship_name: Any) -> bool:
+    """Whether edges with this relationship name are left out of the edge vector collection."""
+    skipped = get_cognify_config().edge_embedding_skip_relationships
+    return bool(skipped) and relationship_name in skipped
 
 
 LLM_EXTRACTOR = "llm"
